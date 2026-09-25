@@ -1,1 +1,106 @@
+name: Build Xiaomi Mi Router 3 OpenWrt
 
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build MIR3 firmware
+    runs-on: ubuntu-24.04
+
+    steps:
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+
+          sudo apt-get install -y \
+            build-essential \
+            clang \
+            flex \
+            bison \
+            gawk \
+            gettext \
+            git \
+            libncurses5-dev \
+            libssl-dev \
+            python3 \
+            python3-setuptools \
+            rsync \
+            unzip \
+            wget \
+            zlib1g-dev \
+            file \
+            swig \
+            time
+
+      - name: Clone Xiaomi OpenWrt builder
+        run: |
+          git clone \
+            --depth 1 \
+            https://github.com/openwrt-xiaomi/builder.git \
+            builder
+
+      - name: Create OpenWrt build tree
+        working-directory: builder
+        run: |
+          ./xcreate.sh -v xq-25.12
+
+      - name: Update build tree
+        working-directory: builder/xq-25.12
+        run: |
+          ./xupdate.sh -f
+
+      - name: Show available R3 configuration
+        working-directory: builder/xq-25.12
+        run: |
+          find . -iname '*r3*.config' -o \
+                 -iname '*r3*.sh' | sort
+
+      - name: Build Xiaomi Mi Router 3
+        working-directory: builder/xq-25.12
+        run: |
+          ./xmake.sh -f -t r3
+
+      - name: Find firmware
+        run: |
+          echo "===== MIR3 firmware ====="
+
+          find builder/xq-25.12 \
+            -type f \
+            \( \
+              -name '*miwifi-r3*.bin' -o \
+              -name '*r3*.bin' \
+            \) \
+            -print
+
+      - name: Collect firmware
+        run: |
+          mkdir -p artifacts
+
+          find builder/xq-25.12 \
+            -type f \
+            \( \
+              -name '*miwifi-r3*.bin' -o \
+              -name '*r3*.bin' \
+            \) \
+            -exec cp {} artifacts/ \;
+
+          echo "===== Artifacts ====="
+          ls -lh artifacts
+
+      - name: Generate SHA256
+        run: |
+          cd artifacts
+          sha256sum *.bin > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Upload MIR3 firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: MIR3-OpenWrt-25.12
+          path: artifacts/
+          if-no-files-found: error
